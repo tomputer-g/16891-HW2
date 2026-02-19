@@ -3,6 +3,7 @@ import time as timer
 import heapq
 import random
 from single_agent_planner import compute_heuristics, a_star, get_location, get_sum_of_cost
+from typing import Any, Dict, List
 
 
 def detect_first_collision_for_path_pair(path1, path2, k):
@@ -12,8 +13,19 @@ def detect_first_collision_for_path_pair(path1, path2, k):
     # A vertex collision occurs if both robots occupy the same location at the same timestep
     # An edge collision occurs if the robots swap their location at the same timestep.
     # You should use "get_location(path, t)" to get the location of a robot at time t.
-
-    pass
+    min_t = min(len(path1), len(path2))
+    max_t = max(len(path1), len(path2))
+    for t in range(max_t):
+        last_valid_t_agent1 = min(len(path1), t)
+        last_valid_t_agent2 = min(len(path2), t)
+        if get_location(path1, last_valid_t_agent1) == get_location(path2, last_valid_t_agent2):
+            return {'loc': [get_location(path1, last_valid_t_agent1)], 'timestep': t}
+    
+    for t in range(min_t-1):
+        if get_location(path1, t) == get_location(path2, t+1) and get_location(path1, t+1) == get_location(path2, t):
+            return {'loc': [get_location(path1, t), get_location(path1, t+1)], 'timestep': t+1}
+    
+    return None
 
 
 def detect_collisions_among_all_paths(paths, k):
@@ -22,9 +34,15 @@ def detect_collisions_among_all_paths(paths, k):
     # A collision can be represented as dictionary that contains the id of the two robots, the vertex or edge
     # causing the collision, and the timestep at which the collision occurred.
     # You should use your detect_collision function to find a collision between two robots.
-
-    pass
-
+    collisions = []
+    for agent1 in range(len(paths)):
+        for agent2 in range(agent1+1, len(paths)):
+            res = detect_first_collision_for_path_pair(paths[agent1], paths[agent2], k)
+            if res:
+                res['a1'] = agent1
+                res['a2'] = agent2
+                collisions.append(res)
+    return collisions
 
 def standard_splitting(collision):
     ##############################
@@ -35,8 +53,10 @@ def standard_splitting(collision):
     # Edge collision: the first constraint prevents the first agent to traverse the specified edge at the
     #                specified timestep, and the second constraint prevents the second agent to traverse the
     #                specified edge at the specified timestep
+    constraint1 = {'agent': collision['a1'], 'loc': collision['loc'], 'timestep': collision['timestep']}
+    constraint2 = {'agent': collision['a2'], 'loc': collision['loc'], 'timestep': collision['timestep']}
+    return [constraint1, constraint2]
 
-    pass
 
 
 class KRCBSSolver(object):
@@ -115,7 +135,32 @@ class KRCBSSolver(object):
         # These are just to print debug output - can be modified once you implement the high-level search
         # self.print_results(root)
         # return root['paths']
-        pass
+
+        while len(self.open_list) > 0:
+            P = self.pop_node()
+            P_collisions = detect_collisions_among_all_paths(P['paths'], self.k)
+            if len(P_collisions) == 0:
+                self.print_results(P)
+                return P['paths']
+
+            # Select a collision (right now, arbitrarily select the first one)
+            collision = P_collisions[0]
+            constraints = standard_splitting(collision=collision)
+            for constraint in constraints:
+                Q = copy.deepcopy(P)
+                Q['constraints'].extend([constraint])
+                agent = constraint['agent']
+                agent_path = a_star(
+                    self.my_map, self.starts[agent], self.goals[agent], self.heuristics[agent], agent, Q['constraints']
+                )
+
+                if path is not None:
+                    Q['paths'][agent] = agent_path
+                    Q['collisions'] = detect_collisions_among_all_paths(Q['paths'], self.k)
+                    Q['cost'] = get_sum_of_cost(Q['paths'])
+                    self.push_node(Q)
+        raise BaseException('No solutions')
+
 
     def print_results(self, node):
         print("\n Found a solution! \n")
