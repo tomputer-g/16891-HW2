@@ -3,32 +3,53 @@ import time as timer
 import heapq
 import random
 from single_agent_planner import compute_heuristics, a_star, get_location, get_sum_of_cost
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
+from dataclasses import dataclass
 
 
-def detect_first_collision_for_path_pair(path1, path2, k):
+@dataclass
+class KRCBSVertexCollision:
+    loc: List[Tuple[int]]
+    timestep1: int
+    timestep2: int
+    a1: int
+    a2: int
+    
+@dataclass
+class KRCBSConstraint:
+    agent: int
+    loc: List[Tuple[int]]
+    timestep: int
+    
+    def to_dict(self):
+        return {'agent': self.agent, 'loc': self.loc, 'timestep': self.timestep}
+
+def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollision | None:
     ##############################
     # Return the first collision that occurs between two robot paths (or None if there is no collision)
-    # There are two types of collisions: vertex collision and edge collision.
-    # A vertex collision occurs if both robots occupy the same location at the same timestep
-    # An edge collision occurs if the robots swap their location at the same timestep.
-    # You should use "get_location(path, t)" to get the location of a robot at time t.
-    min_t = min(len(path1), len(path2))
-    max_t = max(len(path1), len(path2))
-    for t in range(max_t):
-        last_valid_t_agent1 = min(len(path1), t)
-        last_valid_t_agent2 = min(len(path2), t)
-        if get_location(path1, last_valid_t_agent1) == get_location(path2, last_valid_t_agent2):
-            return {'loc': [get_location(path1, last_valid_t_agent1)], 'timestep': t}
+    # min_t = min(len(path1), len(path2))
+    # max_t = max(len(path1), len(path2))
+    # for t in range(max_t):
+    #     last_valid_t_agent1 = min(len(path1), t)
+    #     last_valid_t_agent2 = min(len(path2), t)
+    #     if get_location(path1, last_valid_t_agent1) == get_location(path2, last_valid_t_agent2):
+    #         return {'loc': [get_location(path1, last_valid_t_agent1)], 'timestep': t}
     
-    for t in range(min_t-1):
-        if get_location(path1, t) == get_location(path2, t+1) and get_location(path1, t+1) == get_location(path2, t):
-            return {'loc': [get_location(path1, t), get_location(path1, t+1)], 'timestep': t+1}
+    # Check if any vertex collision (within k timesteps of each other) occurs\
+    max_t = max(len(path1), len(path2))
+    for t1 in range(max_t):
+        t1_valid = min(len(path1), t1)
+        for t2_valid in range(max(0, t1-k), min(len(path2), t1+k+1)):
+            if get_location(path1, t1_valid) == get_location(path2, t2_valid):
+                return KRCBSVertexCollision(loc=[get_location(path1, t1_valid)], timestep1=t1, timestep2=t2_valid, a1=-1, a2=-1)
+    
+    # for t in range(min_t-1):
+    #     if get_location(path1, t) == get_location(path2, t+1) and get_location(path1, t+1) == get_location(path2, t):
+    #         return {'loc': [get_location(path1, t), get_location(path1, t+1)], 'timestep': t+1}
     
     return None
 
-
-def detect_collisions_among_all_paths(paths, k):
+def detect_collisions_among_all_paths(paths, k) -> List[KRCBSVertexCollision]:
     ##############################
     # Return a list of first collisions between all robot pairs.
     # A collision can be represented as dictionary that contains the id of the two robots, the vertex or edge
@@ -39,25 +60,15 @@ def detect_collisions_among_all_paths(paths, k):
         for agent2 in range(agent1+1, len(paths)):
             res = detect_first_collision_for_path_pair(paths[agent1], paths[agent2], k)
             if res:
-                res['a1'] = agent1
-                res['a2'] = agent2
+                res.a1 = agent1
+                res.a2 = agent2
                 collisions.append(res)
     return collisions
 
-def standard_splitting(collision):
-    ##############################
-    # Return a list of (two) constraints to resolve the given collision
-    # Vertex collision: the first constraint prevents the first agent to be at the specified location at the
-    #                  specified timestep, and the second constraint prevents the second agent to be at the
-    #                  specified location at the specified timestep.
-    # Edge collision: the first constraint prevents the first agent to traverse the specified edge at the
-    #                specified timestep, and the second constraint prevents the second agent to traverse the
-    #                specified edge at the specified timestep
-    constraint1 = {'agent': collision['a1'], 'loc': collision['loc'], 'timestep': collision['timestep']}
-    constraint2 = {'agent': collision['a2'], 'loc': collision['loc'], 'timestep': collision['timestep']}
+def KRCBSSplittingPointConstraints(collision):
+    constraint1 = KRCBSConstraint(agent=collision.a1, loc=collision.loc, timestep=collision.timestep1).to_dict()
+    constraint2 = KRCBSConstraint(agent=collision.a2, loc=collision.loc, timestep=collision.timestep2).to_dict()
     return [constraint1, constraint2]
-
-
 
 class KRCBSSolver(object):
     """The high-level search of K-Robust CBS."""
@@ -102,6 +113,9 @@ class KRCBSSolver(object):
 
         """
         self.start_time = timer.time()
+        
+        if self.k == 0:
+            raise BaseException("KRCBS with k = 0")
 
         # Generate the root node
         # constraints   - list of constraints
@@ -113,49 +127,35 @@ class KRCBSSolver(object):
                 'paths': [],
                 'collisions': []}
         for i in range(self.num_of_agents):  # Find initial path for each agent
-            path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
+            _path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
                           i, root['constraints'])
-            if path is None:
+            if _path is None:
                 raise BaseException('No solutions')
-            root['paths'].append(path)
+            root['paths'].append(_path)
 
         root['cost'] = get_sum_of_cost(root['paths'])
         root['collisions'] = detect_collisions_among_all_paths(root['paths'], self.k)
         self.push_node(root)
 
-        ##############################
-        # High-Level Search
-        # Repeat the following as long as the open list is not empty:
-        #   1. Get the next node from the open list (you can use self.pop_node()
-        #   2. If this node has no collision, return solution
-        #   3. Otherwise, choose the first collision and convert to a list of constraints (using your
-        #      standard_splitting function). Add a new child node to your open list for each constraint
-        # Ensure to create a copy of any objects that your child nodes might inherit
-
-        # These are just to print debug output - can be modified once you implement the high-level search
-        # self.print_results(root)
-        # return root['paths']
-
         while len(self.open_list) > 0:
             P = self.pop_node()
-            P_collisions = detect_collisions_among_all_paths(P['paths'], self.k)
-            if len(P_collisions) == 0:
+            if len(P['collisions']) == 0:
                 self.print_results(P)
                 return P['paths']
 
             # Select a collision (right now, arbitrarily select the first one)
-            collision = P_collisions[0]
-            constraints = standard_splitting(collision=collision)
+            collision = P['collisions'][0]
+            constraints = KRCBSSplittingPointConstraints(collision=collision)
             for constraint in constraints:
                 Q = copy.deepcopy(P)
                 Q['constraints'].extend([constraint])
                 agent = constraint['agent']
-                agent_path = a_star(
+                new_path = a_star(
                     self.my_map, self.starts[agent], self.goals[agent], self.heuristics[agent], agent, Q['constraints']
                 )
 
-                if path is not None:
-                    Q['paths'][agent] = agent_path
+                if new_path is not None:
+                    Q['paths'][agent] = new_path
                     Q['collisions'] = detect_collisions_among_all_paths(Q['paths'], self.k)
                     Q['cost'] = get_sum_of_cost(Q['paths'])
                     self.push_node(Q)

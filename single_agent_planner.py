@@ -176,6 +176,9 @@ def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints, T=1000000)
     earliest_goal_timestep = 0
     h_value = h_values[start_loc]
     root = {'loc': start_loc, 'g_val': 0, 'h_val': h_value, 'parent': None, 'timestep': 0}
+    if is_constrained(curr_loc=start_loc, next_loc=start_loc, next_time=0, constraint_table=constraints_table):
+        #start location is constrained. No solution
+        return None
     push_node(open_list, root)
     closed_list[(root['loc'], root['timestep'])] = root
     while len(open_list) > 0:
