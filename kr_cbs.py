@@ -16,6 +16,16 @@ class KRCBSVertexCollision:
     a2: int
     
 @dataclass
+class KRCBSEdgeCollision:
+    #TODO curr unused
+    loc1: List[Tuple[int]]
+    loc2: List[Tuple[int]]
+    timestep1: int
+    timestep2: int
+    a1: int
+    a2: int
+    
+@dataclass
 class KRCBSConstraint:
     agent: int
     loc: List[Tuple[int]]

@@ -6,7 +6,7 @@ import random
 # Project imports.
 from hungarian import hungarian_algorithm
 from single_agent_planner import compute_heuristics, a_star, get_location, get_sum_of_cost
-from kr_cbs import detect_first_collision_for_path_pair, detect_collisions_among_all_paths, KRCBSSolver
+from kr_cbs import detect_first_collision_for_path_pair, detect_collisions_among_all_paths, KRCBSSolver, KRCBSVertexCollision, KRCBSEdgeCollision, KRCBSConstraint
 
 
 class TACBSSolver(KRCBSSolver):
@@ -60,9 +60,18 @@ class TACBSSolver(KRCBSSolver):
         ##############################
         # Find initial paths for each agent to all targets.
         # Populate root['paths'] and root['Mc'] with the paths and costs.
-        raise NotImplementedError('Implement the initial path finding for each agent to all targets.')
+        
+        for agent_id in range(self.num_of_agents):
+            # root['paths'].append([])
+            for goalidx, goal in enumerate(self.goals):
+                _path = a_star(self.my_map, self.starts[agent_id], goal, self.heuristics[agent_id], agent_id, [])
+                root['Mc'][agent_id][goalidx] = len(_path) if _path is not None else float('inf')
 
-
+        assignments = hungarian_algorithm(root['Mc'])
+        for agent_id in range(self.num_of_agents):
+            goal_id = assignments[agent_id]
+            root['paths'].append(a_star(self.my_map, self.starts[agent_id], self.goals[goal_id], self.heuristics[agent_id], agent_id, []))
+            
         root['cost'] = get_sum_of_cost(root['paths'])
         root['collisions'] = detect_collisions_among_all_paths(root['paths'], self.k)
         self.push_node(root)
@@ -79,5 +88,33 @@ class TACBSSolver(KRCBSSolver):
         #         3b. Replan the affected agent paths to all goals and update Mc with the costs.
         #         3c. Find the new optimal assignment and paths.
         #         3d. Add the new child CT node to the open list.
-
-        pass
+        
+        while len(self.open_list) > 0:
+            P = self.pop_node()
+            if len(P['collisions']) == 0:
+                return P['paths']
+            # Select a collision (right now, arbitrarily select the first one)
+            collision = P['collisions'][0]
+            i = collision.a1
+            j = collision.a2
+            for agent_k in [i, j]:
+                Q = copy.deepcopy(P)
+                if type(collision) is KRCBSVertexCollision:
+                    Q['constraints'].append(KRCBSConstraint(agent=agent_k, loc=collision.loc, timestep=collision.timestep1).to_dict())
+                else:
+                    raise BaseException("Edge Constraints not added yet")
+                for goalidx, goal in enumerate(self.goals):
+                    _path = a_star(self.my_map, self.starts[agent_k], goal, self.heuristics[agent_k], agent_k, Q['constraints'])
+                    root['Mc'][agent_k][goalidx] = len(_path) if _path is not None else float('inf')
+                assignments = hungarian_algorithm(Q['Mc'])
+                Q['paths'] = []
+                for agent_id in range(self.num_of_agents):
+                    goal_id = assignments[agent_id]
+                    Q['paths'].append(a_star(self.my_map, self.starts[agent_id], self.goals[goal_id], self.heuristics[agent_id], agent_id, []))
+                    
+                Q['cost'] = get_sum_of_cost(Q['paths'])
+                Q['collisions'] = detect_collisions_among_all_paths(Q['paths'], self.k)
+                print(Q)
+                self.push_node(Q)
+        
+        raise BaseException("No Solution")
