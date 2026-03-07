@@ -17,7 +17,6 @@ class KRCBSVertexCollision:
     
 @dataclass
 class KRCBSEdgeCollision:
-    #TODO curr unused
     loc1: List[Tuple[int]]
     loc2: List[Tuple[int]]
     timestep1: int
@@ -34,7 +33,7 @@ class KRCBSConstraint:
     def to_dict(self):
         return {'agent': self.agent, 'loc': self.loc, 'timestep': self.timestep}
 
-def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollision | None:
+def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollision | KRCBSEdgeCollision | None:
     ##############################
     # Return the first collision that occurs between two robot paths (or None if there is no collision)
     # min_t = min(len(path1), len(path2))
@@ -46,13 +45,32 @@ def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollisio
     #         return {'loc': [get_location(path1, last_valid_t_agent1)], 'timestep': t}
     
     # Check if any vertex collision (within k timesteps of each other) occurs\
-    max_t = max(len(path1), len(path2))
-    for t1 in range(max_t):
-        t1_valid = min(len(path1), t1)
-        for t2_valid in range(max(0, t1-k), min(len(path2), t1+k+1)):
-            if get_location(path1, t1_valid) == get_location(path2, t2_valid):
-                return KRCBSVertexCollision(loc=[get_location(path1, t1_valid)], timestep1=t1, timestep2=t2_valid, a1=-1, a2=-1)
     
+    
+    if k == 0:
+        # from HW1
+        min_t = min(len(path1), len(path2))
+        max_t = max(len(path1), len(path2))
+        for t in range(max_t):
+            last_valid_t_agent1 = min(len(path1), t)
+            last_valid_t_agent2 = min(len(path2), t)
+            if get_location(path1, last_valid_t_agent1) == get_location(path2, last_valid_t_agent2):
+                return KRCBSVertexCollision(loc=[get_location(path1, last_valid_t_agent1)], timestep1=t, timestep2=t, a1=-1, a2=-1)
+                # return {'loc': [get_location(path1, last_valid_t_agent1)], 'timestep': t}
+        
+        for t in range(min_t-1):
+            if get_location(path1, t) == get_location(path2, t+1) and get_location(path1, t+1) == get_location(path2, t):
+                return KRCBSEdgeCollision(loc1=[get_location(path1, t)], loc2=[get_location(path1, t+1)], timestep1=t+1, timestep2=t+1, a1=-1, a2=-1)
+                # return {'loc': [get_location(path1, t), get_location(path1, t+1)], 'timestep': t+1}
+    else: 
+        max_t = max(len(path1), len(path2))
+        for t1 in range(max_t):
+            t1_valid = min(len(path1), t1)
+            for t2_valid in range(max(0, t1-k), min(len(path2), t1+k+1)):
+                if get_location(path1, t1_valid) == get_location(path2, t2_valid):
+                    return KRCBSVertexCollision(loc=[get_location(path1, t1_valid)], timestep1=t1, timestep2=t2_valid, a1=-1, a2=-1)
+
+
     # for t in range(min_t-1):
     #     if get_location(path1, t) == get_location(path2, t+1) and get_location(path1, t+1) == get_location(path2, t):
     #         return {'loc': [get_location(path1, t), get_location(path1, t+1)], 'timestep': t+1}
@@ -75,10 +93,17 @@ def detect_collisions_among_all_paths(paths, k) -> List[KRCBSVertexCollision]:
                 collisions.append(res)
     return collisions
 
-def KRCBSSplittingPointConstraints(collision):
-    constraint1 = KRCBSConstraint(agent=collision.a1, loc=collision.loc, timestep=collision.timestep1).to_dict()
-    constraint2 = KRCBSConstraint(agent=collision.a2, loc=collision.loc, timestep=collision.timestep2).to_dict()
-    return [constraint1, constraint2]
+def KRCBSSplittingPointConstraints(collision: KRCBSEdgeCollision | KRCBSVertexCollision):
+    if type(collision) is KRCBSVertexCollision:
+        constraint1 = KRCBSConstraint(agent=collision.a1, loc=collision.loc, timestep=collision.timestep1).to_dict()
+        constraint2 = KRCBSConstraint(agent=collision.a2, loc=collision.loc, timestep=collision.timestep2).to_dict()
+        return [constraint1, constraint2]
+    elif type(collision) is KRCBSEdgeCollision:
+        constraint1 = KRCBSConstraint(agent=collision.a1, loc=collision.loc1, timestep=collision.timestep1).to_dict()
+        constraint2 = KRCBSConstraint(agent=collision.a2, loc=collision.loc2, timestep=collision.timestep2).to_dict()
+        return [constraint1, constraint2]
+    else:
+        raise BaseException("Unknown collision type")
 
 class KRCBSSolver(object):
     """The high-level search of K-Robust CBS."""
@@ -123,9 +148,6 @@ class KRCBSSolver(object):
 
         """
         self.start_time = timer.time()
-        
-        if self.k == 0:
-            raise BaseException("KRCBS with k = 0")
 
         # Generate the root node
         # constraints   - list of constraints
