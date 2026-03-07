@@ -43,9 +43,7 @@ def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollisio
     #     if get_location(path1, last_valid_t_agent1) == get_location(path2, last_valid_t_agent2):
     #         return {'loc': [get_location(path1, last_valid_t_agent1)], 'timestep': t}
     
-    # Check if any vertex collision (within k timesteps of each other) occurs\
-    
-    
+    # Check if any vertex collision (within k timesteps of each other) occurs
     if k == 0:
         # from HW1
         min_t = min(len(path1), len(path2))
@@ -59,8 +57,9 @@ def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollisio
         
         for t in range(min_t-1):
             if get_location(path1, t) == get_location(path2, t+1) and get_location(path1, t+1) == get_location(path2, t):
-                return KRCBSEdgeCollision(locs=[[get_location(path1, t)], [get_location(path1, t+1)]], timestep1=t+1, timestep2=t+1, a1=-1, a2=-1)
+                return KRCBSEdgeCollision(locs=[get_location(path1, t), get_location(path1, t+1)], timestep1=t+1, timestep2=t+1, a1=-1, a2=-1)
                 # return {'loc': [get_location(path1, t), get_location(path1, t+1)], 'timestep': t+1}
+        return None
     else: 
         max_t = max(len(path1), len(path2))
         for t1 in range(max_t):
@@ -68,15 +67,9 @@ def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollisio
             for t2_valid in range(max(0, t1-k), min(len(path2), t1+k+1)):
                 if get_location(path1, t1_valid) == get_location(path2, t2_valid):
                     return KRCBSVertexCollision(loc=[get_location(path1, t1_valid)], timestep1=t1, timestep2=t2_valid, a1=-1, a2=-1)
+        return None
 
-
-    # for t in range(min_t-1):
-    #     if get_location(path1, t) == get_location(path2, t+1) and get_location(path1, t+1) == get_location(path2, t):
-    #         return {'loc': [get_location(path1, t), get_location(path1, t+1)], 'timestep': t+1}
-    
-    return None
-
-def detect_collisions_among_all_paths(paths, k) -> List[KRCBSVertexCollision]:
+def detect_collisions_among_all_paths(paths, k) -> List[KRCBSVertexCollision | KRCBSEdgeCollision]:
     ##############################
     # Return a list of first collisions between all robot pairs.
     # A collision can be represented as dictionary that contains the id of the two robots, the vertex or edge
@@ -189,6 +182,7 @@ class KRCBSSolver(object):
                     Q['paths'][agent] = new_path
                     Q['collisions'] = detect_collisions_among_all_paths(Q['paths'], self.k)
                     Q['cost'] = get_sum_of_cost(Q['paths'])
+                    print(Q)
                     self.push_node(Q)
         raise BaseException('No solutions')
 
