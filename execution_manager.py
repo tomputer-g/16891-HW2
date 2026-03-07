@@ -88,7 +88,18 @@ class WorksReallyWellExecutionManager(ExecutionManager):
         #    that cell, add a dependency into self.tpg_predecessor[agent_id][t].
         # 4) Treat consecutive waits of the same agent in one cell as a single
         #    visit so wait blocks do not generate self-dependencies.
-        pass
+        max_t = max(len(path) for path in self.paths)
+        last_visited_for_loc = {}
+        for t in range(max_t):
+            for agent_id in range(len(self.paths)):
+                agent_loc_at_t = get_location(self.paths[agent_id], t)
+                if agent_loc_at_t in last_visited_for_loc:
+                    pred_agent, pred_t = last_visited_for_loc[agent_loc_at_t]
+                    if pred_agent != agent_id:
+                        # another agent was/is the last visitor here
+                        self.tpg_predecessor[agent_id][t] = (pred_agent, pred_t)
+                last_visited_for_loc[agent_loc_at_t] = (agent_id, t)
+        
 
     def _next_non_wait_timestep(self, agent_id: int) -> int:
         """
@@ -115,7 +126,9 @@ class WorksReallyWellExecutionManager(ExecutionManager):
         ##############################
         # TODO: Replace placeholder with your TPG readiness condition.
         # Hint: compare predecessor progress to predecessor timestep.
-        return False
+
+        pred_agent_id, pred_t = pred
+        return self.agent_progress[pred_agent_id] > pred_t
 
     def get_next_location_for_all_agents(self) -> List[Tuple[int, int]]:
         """
