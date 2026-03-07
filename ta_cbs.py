@@ -89,18 +89,24 @@ class TACBSSolver(KRCBSSolver):
             collision = P['collisions'][0]
             for agent_k in [collision.a1, collision.a2]:
                 Q = copy.deepcopy(P)
+
                 if type(collision) is KRCBSVertexCollision:
                     Q['constraints'].extend([KRCBSConstraint(agent=agent_k, loc=collision.loc, timestep=(collision.timestep1 if agent_k == collision.a1 else collision.timestep2)).to_dict()])
                 elif type(collision) is KRCBSEdgeCollision:
                     Q['constraints'].extend([KRCBSConstraint(agent=agent_k, loc=collision.locs, timestep=(collision.timestep1 if agent_k == collision.a1 else collision.timestep2)).to_dict()])
                 else:
                     raise BaseException("Unknown collision type")
-                print(Q['constraints'])
+                
                 _agent_k_paths = {}
+                _agent_k_any_feasible = False
                 for goal_id, goal in enumerate(self.goals):
                     _agent_k_paths[goal_id] = a_star(self.my_map, self.starts[agent_k], goal, self.heuristics[goal_id], agent_k, Q['constraints'])
+                    if _agent_k_paths[goal_id] is not None:
+                        _agent_k_any_feasible = True
                     Q['Mc'][agent_k][goal_id] = len(_agent_k_paths[goal_id]) if _agent_k_paths[goal_id] is not None else float('inf')
-                print(Q['Mc'])
+                if not _agent_k_any_feasible:
+                    continue # skip adding child node in event start location is constrained, for example. To avoid hungarian algorithm erroring out
+
                 Q['target_assign'] = hungarian_algorithm(Q['Mc'])
                 Q['paths'] = []
                 for agent_id in range(self.num_of_agents):
@@ -108,12 +114,10 @@ class TACBSSolver(KRCBSSolver):
                     if agent_id == agent_k:
                         Q['paths'].append(_agent_k_paths[goal_id])
                     else:
-                    #     Q['paths'].append(P['paths'][agent_id])
                         Q['paths'].append(a_star(self.my_map, self.starts[agent_id], self.goals[goal_id], self.heuristics[goal_id], agent_id, Q['constraints']))
                     
                 Q['cost'] = get_sum_of_cost(Q['paths'])
                 Q['collisions'] = detect_collisions_among_all_paths(Q['paths'], self.k)
-                print(Q)
                 self.push_node(Q)
         
         raise BaseException("No Solution")
