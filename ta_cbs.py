@@ -52,6 +52,7 @@ class TACBSSolver(KRCBSSolver):
         root = {'cost': 0,
                 'constraints': [],  # Like in CBS, a list of dictionaries, each dictionary is a constraint.
                 'collisions': [],  # Like in CBS.
+                'target_assign': [],  # CUSTOM: a copy of the target assignment for this node.
                 'paths': [],  # The paths, one for each agent, that are planned for the optimal assignment under Mc.
                 'Mc': {i: [float('inf') for g in range(len(self.goals))] for i in range(self.num_of_agents)}
                             # Dict[Int: List[Int]]
@@ -60,16 +61,17 @@ class TACBSSolver(KRCBSSolver):
         ##############################
         # Find initial paths for each agent to all targets.
         # Populate root['paths'] and root['Mc'] with the paths and costs.
-        
+        _root_paths = {}
         for agent_id in range(self.num_of_agents):
-            for goalidx, goal in enumerate(self.goals):
-                _path = a_star(self.my_map, self.starts[agent_id], goal, self.heuristics[agent_id], agent_id, [])
-                root['Mc'][agent_id][goalidx] = len(_path) if _path is not None else float('inf')
+            _root_paths[agent_id] = {}
+            for goal_id, goal in enumerate(self.goals):
+                _root_paths[agent_id][goal_id] = a_star(self.my_map, self.starts[agent_id], goal, self.heuristics[goal_id], agent_id, root['constraints'])
+                root['Mc'][agent_id][goal_id] = len(_root_paths[agent_id][goal_id]) if _root_paths[agent_id][goal_id] is not None else float('inf')
 
-        _target_assign = hungarian_algorithm(root['Mc'])
+        root['target_assign'] = hungarian_algorithm(root['Mc'])
         for agent_id in range(self.num_of_agents):
-            goal_id = _target_assign[agent_id]
-            root['paths'].append(a_star(self.my_map, self.starts[agent_id], self.goals[goal_id], self.heuristics[agent_id], agent_id, []))
+            goal_id = root['target_assign'][agent_id]
+            root['paths'].append(_root_paths[agent_id][goal_id])
             
         root['cost'] = get_sum_of_cost(root['paths'])
         root['collisions'] = detect_collisions_among_all_paths(root['paths'], self.k)
@@ -77,41 +79,37 @@ class TACBSSolver(KRCBSSolver):
 
         ##############################
         # High-Level Search
-        #  Repeat the following as long as the open list is not empty:
-        #    1. Get the next node from the open list (you can use self.pop_node()
-        #    2. If this node has no collisions, return the solution stored in its 'paths' field.
-        #    3. Otherwise, choose the first collision and convert to a list of constraints (using your
-        #       standard_splitting function).
-        #       For each constraint created:
-        #         3a. Create a new child CT node.
-        #         3b. Replan the affected agent paths to all goals and update Mc with the costs.
-        #         3c. Find the new optimal assignment and paths.
-        #         3d. Add the new child CT node to the open list.
         
         while len(self.open_list) > 0:
             P = self.pop_node()
             if len(P['collisions']) == 0:
+                self.print_results(P)
                 return P['paths']
             # Select a collision (right now, arbitrarily select the first one)
             collision = P['collisions'][0]
-            i = collision.a1
-            j = collision.a2
-            for agent_k in [i, j]:
+            for agent_k in [collision.a1, collision.a2]:
                 Q = copy.deepcopy(P)
                 if type(collision) is KRCBSVertexCollision:
-                    Q['constraints'].append(KRCBSConstraint(agent=agent_k, loc=collision.loc, timestep=collision.timestep1).to_dict())
+                    Q['constraints'].extend([KRCBSConstraint(agent=agent_k, loc=collision.loc, timestep=(collision.timestep1 if agent_k == collision.a1 else collision.timestep2)).to_dict()])
                 elif type(collision) is KRCBSEdgeCollision:
-                    Q['constraints'].append(KRCBSConstraint(agent=agent_k, loc=collision.locs, timestep=collision.timestep1).to_dict())
+                    Q['constraints'].extend([KRCBSConstraint(agent=agent_k, loc=collision.locs, timestep=(collision.timestep1 if agent_k == collision.a1 else collision.timestep2)).to_dict()])
                 else:
                     raise BaseException("Unknown collision type")
-                for goalidx, goal in enumerate(self.goals):
-                    _path = a_star(self.my_map, self.starts[agent_k], goal, self.heuristics[agent_k], agent_k, Q['constraints'])
-                    Q['Mc'][agent_k][goalidx] = len(_path) if _path is not None else float('inf')
-                _target_assign = hungarian_algorithm(Q['Mc'])
+                print(Q['constraints'])
+                _agent_k_paths = {}
+                for goal_id, goal in enumerate(self.goals):
+                    _agent_k_paths[goal_id] = a_star(self.my_map, self.starts[agent_k], goal, self.heuristics[goal_id], agent_k, Q['constraints'])
+                    Q['Mc'][agent_k][goal_id] = len(_agent_k_paths[goal_id]) if _agent_k_paths[goal_id] is not None else float('inf')
+                print(Q['Mc'])
+                Q['target_assign'] = hungarian_algorithm(Q['Mc'])
                 Q['paths'] = []
                 for agent_id in range(self.num_of_agents):
-                    goal_id = _target_assign[agent_id]
-                    Q['paths'].append(a_star(self.my_map, self.starts[agent_id], self.goals[goal_id], self.heuristics[agent_id], agent_id, []))
+                    goal_id = Q['target_assign'][agent_id]
+                    if agent_id == agent_k:
+                        Q['paths'].append(_agent_k_paths[goal_id])
+                    else:
+                    #     Q['paths'].append(P['paths'][agent_id])
+                        Q['paths'].append(a_star(self.my_map, self.starts[agent_id], self.goals[goal_id], self.heuristics[goal_id], agent_id, Q['constraints']))
                     
                 Q['cost'] = get_sum_of_cost(Q['paths'])
                 Q['collisions'] = detect_collisions_among_all_paths(Q['paths'], self.k)
@@ -119,3 +117,11 @@ class TACBSSolver(KRCBSSolver):
                 self.push_node(Q)
         
         raise BaseException("No Solution")
+
+    def print_results(self, node):
+        print("\n Found a solution! \n")
+        CPU_time = timer.time() - self.start_time
+        print("CPU time (s):    {:.2f}".format(CPU_time))
+        print("Sum of costs:    {}".format(get_sum_of_cost(node['paths'])))
+        print("Expanded nodes:  {}".format(self.num_of_expanded))
+        print("Generated nodes: {}".format(self.num_of_generated))
