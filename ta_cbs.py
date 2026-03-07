@@ -62,14 +62,13 @@ class TACBSSolver(KRCBSSolver):
         # Populate root['paths'] and root['Mc'] with the paths and costs.
         
         for agent_id in range(self.num_of_agents):
-            # root['paths'].append([])
             for goalidx, goal in enumerate(self.goals):
                 _path = a_star(self.my_map, self.starts[agent_id], goal, self.heuristics[agent_id], agent_id, [])
                 root['Mc'][agent_id][goalidx] = len(_path) if _path is not None else float('inf')
 
-        assignments = hungarian_algorithm(root['Mc'])
+        _target_assign = hungarian_algorithm(root['Mc'])
         for agent_id in range(self.num_of_agents):
-            goal_id = assignments[agent_id]
+            goal_id = _target_assign[agent_id]
             root['paths'].append(a_star(self.my_map, self.starts[agent_id], self.goals[goal_id], self.heuristics[agent_id], agent_id, []))
             
         root['cost'] = get_sum_of_cost(root['paths'])
@@ -101,15 +100,17 @@ class TACBSSolver(KRCBSSolver):
                 Q = copy.deepcopy(P)
                 if type(collision) is KRCBSVertexCollision:
                     Q['constraints'].append(KRCBSConstraint(agent=agent_k, loc=collision.loc, timestep=collision.timestep1).to_dict())
+                elif type(collision) is KRCBSEdgeCollision:
+                    Q['constraints'].append(KRCBSConstraint(agent=agent_k, loc=collision.locs, timestep=collision.timestep1).to_dict())
                 else:
-                    raise BaseException("Edge Constraints not added yet")
+                    raise BaseException("Unknown collision type")
                 for goalidx, goal in enumerate(self.goals):
                     _path = a_star(self.my_map, self.starts[agent_k], goal, self.heuristics[agent_k], agent_k, Q['constraints'])
-                    root['Mc'][agent_k][goalidx] = len(_path) if _path is not None else float('inf')
-                assignments = hungarian_algorithm(Q['Mc'])
+                    Q['Mc'][agent_k][goalidx] = len(_path) if _path is not None else float('inf')
+                _target_assign = hungarian_algorithm(Q['Mc'])
                 Q['paths'] = []
                 for agent_id in range(self.num_of_agents):
-                    goal_id = assignments[agent_id]
+                    goal_id = _target_assign[agent_id]
                     Q['paths'].append(a_star(self.my_map, self.starts[agent_id], self.goals[goal_id], self.heuristics[agent_id], agent_id, []))
                     
                 Q['cost'] = get_sum_of_cost(Q['paths'])

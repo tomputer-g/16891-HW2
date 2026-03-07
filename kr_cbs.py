@@ -17,8 +17,7 @@ class KRCBSVertexCollision:
     
 @dataclass
 class KRCBSEdgeCollision:
-    loc1: List[Tuple[int]]
-    loc2: List[Tuple[int]]
+    locs: List[List[Tuple[int]]]
     timestep1: int
     timestep2: int
     a1: int
@@ -27,7 +26,7 @@ class KRCBSEdgeCollision:
 @dataclass
 class KRCBSConstraint:
     agent: int
-    loc: List[Tuple[int]]
+    loc: List[Tuple[int]] | List[List[Tuple[int]]]
     timestep: int
     
     def to_dict(self):
@@ -60,7 +59,7 @@ def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollisio
         
         for t in range(min_t-1):
             if get_location(path1, t) == get_location(path2, t+1) and get_location(path1, t+1) == get_location(path2, t):
-                return KRCBSEdgeCollision(loc1=[get_location(path1, t)], loc2=[get_location(path1, t+1)], timestep1=t+1, timestep2=t+1, a1=-1, a2=-1)
+                return KRCBSEdgeCollision(locs=[[get_location(path1, t)], [get_location(path1, t+1)]], timestep1=t+1, timestep2=t+1, a1=-1, a2=-1)
                 # return {'loc': [get_location(path1, t), get_location(path1, t+1)], 'timestep': t+1}
     else: 
         max_t = max(len(path1), len(path2))
@@ -99,8 +98,8 @@ def KRCBSSplittingPointConstraints(collision: KRCBSEdgeCollision | KRCBSVertexCo
         constraint2 = KRCBSConstraint(agent=collision.a2, loc=collision.loc, timestep=collision.timestep2).to_dict()
         return [constraint1, constraint2]
     elif type(collision) is KRCBSEdgeCollision:
-        constraint1 = KRCBSConstraint(agent=collision.a1, loc=collision.loc1, timestep=collision.timestep1).to_dict()
-        constraint2 = KRCBSConstraint(agent=collision.a2, loc=collision.loc2, timestep=collision.timestep2).to_dict()
+        constraint1 = KRCBSConstraint(agent=collision.a1, loc=collision.locs, timestep=collision.timestep1).to_dict()
+        constraint2 = KRCBSConstraint(agent=collision.a2, loc=collision.locs, timestep=collision.timestep2).to_dict()
         return [constraint1, constraint2]
     else:
         raise BaseException("Unknown collision type")
