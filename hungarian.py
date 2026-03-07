@@ -12,10 +12,7 @@ def hungarian_algorithm(agent_goal_costs: Dict[int, List[int]]):
     # Implement the Hungarian algorithm.
     # Return the optimal assignment as a dictionary mapping agent id to goal id.
     N = len(agent_goal_costs[0])
-    hungarian_cost_mat = np.zeros((N, N))
-    for i in range(N):
-        for j in range(N):
-            hungarian_cost_mat[i][j] = agent_goal_costs[i][j]
+    hungarian_cost_mat = np.array([agent_goal_costs[agent_id] for agent_id in range(N)])
     
     _, col_ind = linear_sum_assignment(hungarian_cost_mat)
     
