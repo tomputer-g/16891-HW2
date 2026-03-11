@@ -63,10 +63,11 @@ def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollisio
     else: 
         max_t = max(len(path1), len(path2))
         for t1 in range(max_t):
-            t1_valid = min(len(path1), t1)
-            for t2_valid in range(max(0, t1-k), min(len(path2), t1+k+1)):
-                if get_location(path1, t1_valid) == get_location(path2, t2_valid):
-                    return KRCBSVertexCollision(loc=[get_location(path1, t1_valid)], timestep1=t1, timestep2=t2_valid, a1=-1, a2=-1)
+            t1_idx = min(len(path1)-1, t1)
+            for t2 in range(max(0, t1-k), t1+k+1):
+                t2_idx = min(len(path2)-1, t2)
+                if get_location(path1, t1_idx) == get_location(path2, t2_idx):
+                    return KRCBSVertexCollision(loc=[get_location(path1, t1_idx)], timestep1=t1, timestep2=t2, a1=-1, a2=-1)
         return None
 
 def detect_collisions_among_all_paths(paths, k) -> List[KRCBSVertexCollision | KRCBSEdgeCollision]:
@@ -182,7 +183,6 @@ class KRCBSSolver(object):
                     Q['paths'][agent] = new_path
                     Q['collisions'] = detect_collisions_among_all_paths(Q['paths'], self.k)
                     Q['cost'] = get_sum_of_cost(Q['paths'])
-                    print(Q)
                     self.push_node(Q)
         raise BaseException('No solutions')
 
