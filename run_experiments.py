@@ -7,6 +7,7 @@ from kr_cbs import KRCBSSolver
 from ta_random import TaRandomSolver
 from ta_distance import TaDistanceSolver
 from ta_cbs import TACBSSolver
+from kr_cbs_smart import KRCBSSolver as KRCBSSmartSolver
 from visualize import Animation
 from single_agent_planner import get_sum_of_cost
 
@@ -173,7 +174,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch', action='store_true', default=False,
                         help='Use batch output instead of animation')
     parser.add_argument('--solver', type=str, required=True,
-                        help='The solver to use (KRCBS, TA-RANDOM, TA-DISTANCE, TA-CBS)')
+                        help='The solver to use (KRCBS, TA-RANDOM, TA-DISTANCE, TA-CBS, KRCBS-SMART)')
     parser.add_argument('--smart', action='store_true', default=False,
                         help='Export SMART simulator files (.map, .scen, path .txt)')
     parser.add_argument('--smart-output-dir', type=str, default='smart/generated',
@@ -231,6 +232,11 @@ if __name__ == '__main__':
             print("***Run TA-CBS***")
             ta_cbs = TACBSSolver(my_map, starts, goals, k=args.k)
             paths = ta_cbs.find_solution()
+
+        elif args.solver == "KRCBS-SMART":
+            print("***Run KRCBS-SMART***")
+            krcbs_smart = KRCBSSmartSolver(my_map, starts, goals, k=args.k)
+            paths = krcbs_smart.find_solution()
 
         else:
             raise RuntimeError("Unknown solver!")
