@@ -6,6 +6,7 @@ from single_agent_planner import compute_heuristics, a_star, get_location, get_s
 from typing import Any, Dict, List, Tuple
 from dataclasses import dataclass
 
+USE_SMART_SUM_OF_COST = True
 
 @dataclass
 class KRCBSVertexCollision:
@@ -31,6 +32,36 @@ class KRCBSConstraint:
     
     def to_dict(self):
         return {'agent': self.agent, 'loc': self.loc, 'timestep': self.timestep}
+
+def get_smart_sum_of_cost(paths) -> float:
+    if paths is None:
+        return 0.0
+    total_cost = get_sum_of_cost(paths) #path length cost (base case)
+    TURN_PENALTY_WEIGHT = 3            #Penalty added each time agent turns
+    JAM_PENALTY_WEIGHT = 1           #Penalty added each time agent is directly adjacent to another agent
+
+    for path in paths:
+        for t in range(1, len(path)-1):
+            prev_loc = get_location(path, t-1)
+            curr_loc = get_location(path, t)
+            next_loc = get_location(path, t+1)
+
+            last_dir = (curr_loc[0] - prev_loc[0], curr_loc[1] - prev_loc[1])
+            next_dir = (next_loc[0] - curr_loc[0], next_loc[1] - curr_loc[1])
+
+            # Check for turn
+            if last_dir != next_dir and last_dir != (0,0):
+                total_cost += TURN_PENALTY_WEIGHT
+
+    max_t = max(len(path) for path in paths)
+    for t in range(max_t):
+        locs_at_t = [get_location(path, t) for path in paths]
+        for i in range(len(locs_at_t)):
+            for j in range(i+1, len(locs_at_t)):
+                if abs(locs_at_t[i][0] - locs_at_t[j][0]) + abs(locs_at_t[i][1] - locs_at_t[j][1]) == 1:
+                    total_cost += JAM_PENALTY_WEIGHT
+    
+    return total_cost
 
 def detect_first_collision_for_path_pair(path1, path2, k) -> KRCBSVertexCollision | KRCBSEdgeCollision | None:
     ##############################
@@ -95,6 +126,10 @@ def KRCBSSymmetricSplittingConstraints(collision: KRCBSEdgeCollision | KRCBSVert
         for t in range(max(0, collision.timestep1-k), collision.timestep1+k+1):
             constraints_agent2.append(KRCBSConstraint(agent=collision.a2, loc=collision.loc, timestep=t).to_dict())
         return [constraints_agent1, constraints_agent2]
+    elif type(collision) is KRCBSEdgeCollision: #Assume k=0
+        constraint1 = KRCBSConstraint(agent=collision.a1, loc=collision.locs, timestep=collision.timestep1).to_dict()
+        constraint2 = KRCBSConstraint(agent=collision.a2, loc=collision.locs, timestep=collision.timestep2).to_dict()
+        return [[constraint1], [constraint2]]
     else:
         raise BaseException("Unknown collision type")
 
@@ -126,8 +161,8 @@ class KRCBSSolver(object):
 
         # The parameter for K-Robust CBS.
         self.k = k
-        if k == 0:
-            raise BaseException("K must not be zero for this implementation!")
+        # if k == 0:
+        #     raise BaseException("K must not be zero for this implementation!")
 
     def push_node(self, node):
         heapq.heappush(self.open_list, (node['cost'], len(node['collisions']), self.num_of_generated, node))
@@ -160,7 +195,7 @@ class KRCBSSolver(object):
                 raise BaseException('No solutions')
             root['paths'].append(_path)
 
-        root['cost'] = get_sum_of_cost(root['paths'])
+        root['cost'] = get_smart_sum_of_cost(root['paths']) if USE_SMART_SUM_OF_COST else get_sum_of_cost(root['paths'])
         root['collisions'] = detect_collisions_among_all_paths(root['paths'], self.k)
         self.push_node(root)
 
@@ -185,7 +220,7 @@ class KRCBSSolver(object):
                 if new_path is not None:
                     Q['paths'][agent] = new_path
                     Q['collisions'] = detect_collisions_among_all_paths(Q['paths'], self.k)
-                    Q['cost'] = get_sum_of_cost(Q['paths'])
+                    Q['cost'] = get_smart_sum_of_cost(Q['paths']) if USE_SMART_SUM_OF_COST else get_sum_of_cost(Q['paths'])
                     self.push_node(Q)
         raise BaseException('No solutions')
 
@@ -194,6 +229,6 @@ class KRCBSSolver(object):
         print("\n Found a solution! \n")
         CPU_time = timer.time() - self.start_time
         print("CPU time (s):    {:.2f}".format(CPU_time))
-        print("Sum of costs:    {}".format(get_sum_of_cost(node['paths'])))
+        print("Sum of costs:    {}".format(get_smart_sum_of_cost(node['paths']) if USE_SMART_SUM_OF_COST else get_sum_of_cost(node['paths'])))
         print("Expanded nodes:  {}".format(self.num_of_expanded))
         print("Generated nodes: {}".format(self.num_of_generated))
